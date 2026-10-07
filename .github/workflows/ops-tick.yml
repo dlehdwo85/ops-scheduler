@@ -1,0 +1,29 @@
+# 마케팅 운영실 Cloud tick — 15분마다 감시기·대기열·재시도 (안전망). 대표 승인 후 공개 저장소 dlehdwo85/ops-scheduler 의
+# .github/workflows/ops-tick.yml 로 둔다. 비밀값 없음: GitHub OIDC 토큰(audience dazim-hilink-ops-tick)을 서버가 검증한다.
+# 공개 저장소의 GitHub-hosted runner 사용은 무료. 60일간 커밋이 없으면 GitHub가 예약 실행을 멈추므로 keepalive 단계가 있다.
+name: ops-tick
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+    - cron: "0 0 1 * *"
+  workflow_dispatch: {}
+permissions:
+  id-token: write
+  contents: write
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Cloud tick
+        run: |
+          TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=dazim-hilink-ops-tick" | python3 -c 'import sys,json;print(json.load(sys.stdin)["value"])')
+          curl -sS --fail-with-body -m 90 -X POST -H "Authorization: Bearer $TOKEN" "https://dazim-hilink-integration.vercel.app/api/marketing/cloud/tick?reason=scheduler"
+  keepalive:
+    if: github.event.schedule == '0 0 1 * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          date -u > .keepalive && git config user.name ops-scheduler && git config user.email ops-scheduler@users.noreply.github.com
+          git add .keepalive && git commit -m "keepalive" && git push
